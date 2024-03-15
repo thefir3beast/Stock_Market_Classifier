@@ -12,6 +12,7 @@ def assign_labels(data, threshold, look_forward_days):
 def main(input_file, output_file, threshold, look_forward_days):
     # Load the data
     df = pd.read_csv(input_file)
+    print("Columns in the DataFrame:", df.columns.tolist())  # Diagnostic print
     
     # Apply the labeling function
     df['Label'] = assign_labels(df, threshold, look_forward_days)
