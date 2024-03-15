@@ -8,15 +8,16 @@ from imblearn.over_sampling import SMOTE
 from imblearn.pipeline import Pipeline
 import numpy as np
 
-# Function to calculate moving averages and additional features
 def add_features(df):
+    print("Adding moving averages and additional features...")
     for window in [5, 10, 20]:
         df[f'MA_{window}'] = df['Close'].rolling(window=window).mean()
     df.dropna(inplace=True)
+    print("Features added.")
     return df
 
-# Load and preprocess the data
 def preprocess_data(input_file):
+    print("Loading and preprocessing data...")
     df = pd.read_csv(input_file)
     df['Date'] = pd.to_datetime(df['Date'], utc=True)
     df.set_index('Date', inplace=True)
@@ -28,38 +29,40 @@ def preprocess_data(input_file):
     X.fillna(X.mean(), inplace=True)
     scaler = StandardScaler()
     X_scaled = scaler.fit_transform(X)
+    print("Preprocessing completed.")
     return X_scaled, y
 
-# Main function incorporating SVM and hyperparameter tuning
 def main(input_file, test_size):
+    print("Starting main program...")
     X_scaled, y = preprocess_data(input_file)
     X_train, X_test, y_train, y_test = train_test_split(X_scaled, y, test_size=test_size, shuffle=False)
+    print("Data split into training and test sets.")
 
-    # Define the pipeline with SMOTE and SVC
+    print("Beginning Grid Search for SVM hyperparameter tuning...")
     pipeline = Pipeline([
         ('smote', SMOTE()),
         ('svm', SVC(probability=True))
     ])
 
-    # Parameters for Grid Search with SVM
     param_grid = {
         'svm__C': [0.1, 1, 10],
         'svm__kernel': ['rbf', 'linear'],
         'svm__gamma': ['scale', 'auto']
     }
 
-    # Use GridSearchCV for hyperparameter tuning
     grid_search = GridSearchCV(pipeline, param_grid, cv=3, scoring='accuracy', n_jobs=-1, verbose=2)
     grid_search.fit(X_train, y_train)
+    print("Grid Search completed.")
 
     best_model = grid_search.best_estimator_
-    print(f"Best model: {best_model}")
+    print(f"Best model determined: {best_model}")
 
-    # Evaluate on the test set
+    print("Evaluating the best model on the test set...")
     y_test_pred = best_model.predict(X_test)
     print("Test Set Performance:")
     print(classification_report(y_test, y_test_pred))
     print("Accuracy:", accuracy_score(y_test, y_test_pred))
+    print("Evaluation completed.")
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Train and evaluate a stock classifier using SVM.")
