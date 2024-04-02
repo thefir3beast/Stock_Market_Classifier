@@ -17,22 +17,35 @@ def fetch_data(ticker, start_date, end_date):
     
     # Fetch historical (technical) data
     technical_data = stock.history(start=start_date, end=end_date)
-    
-    # Reset index to make 'Date' a column
-    technical_data.reset_index(inplace=True)
+    technical_data.reset_index(inplace=True)  # Make 'Date' a column
 
-    # Fetch fundamental data
-    info = stock.info
-    fundamental_data = {
-        'Ticker': ticker,
-        'EPS': info.get('trailingEps', float('nan')),
-        'PE Ratio': info.get('trailingPE', float('nan')),
-        'ROE': info.get('returnOnEquity', float('nan')),
-        'Debt to Equity': info.get('debtToEquity', float('nan')),
-        'Current Ratio': info.get('currentRatio', float('nan'))
-    }
-    
-    return technical_data, pd.DataFrame([fundamental_data])
+    # Initialize a list to collect fundamental data for all years
+    fundamental_data_list = []
+
+    # Iterate over each year in the specified range
+    for year in range(int(start_date[:4]), int(end_date[:4]) + 1):
+        # Fetch fundamental data
+        info = stock.info
+
+        fundamental_data = {
+            'Year': year,
+            'Ticker': ticker,
+            'EPS': info.get('trailingEps', float('nan')),
+            'PE Ratio': info.get('trailingPE', float('nan')),
+            'ROE': info.get('returnOnEquity', float('nan')),
+            'Debt to Equity': info.get('debtToEquity', float('nan')),
+            'Current Ratio': info.get('currentRatio', float('nan')),
+            'EBITDA': info.get('ebitda', float('nan')),
+            'Dividend Yield': info.get('dividendYield', float('nan')) * 100 if info.get('dividendYield') else float('nan')
+        }
+
+        # Append the dictionary to the list
+        fundamental_data_list.append(fundamental_data)
+
+    # Convert the list of dictionaries to a DataFrame
+    fundamental_data_all_years = pd.DataFrame(fundamental_data_list)
+
+    return technical_data, fundamental_data_all_years
 
 def save_data(dataframe, save_path, filename):
     if not os.path.exists(save_path):
@@ -64,7 +77,6 @@ def main():
         technical_all = pd.concat([technical_all, technical_data])
         fundamental_all = pd.concat([fundamental_all, fundamental_data], ignore_index=True)
 
-    # Save technical and fundamental data to separate CSV files
     save_data(technical_all, args.save_path, 'technical_data.csv')
     save_data(fundamental_all, args.save_path, 'fundamental_data.csv')
 

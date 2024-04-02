@@ -48,7 +48,7 @@ def main(input_file, test_size):
     print("SMOTE applied to training data.")
 
     print("Training Random Forest Classifier...")
-    rf_classifier = RandomForestClassifier(n_estimators=300, max_depth=None)
+    rf_classifier = RandomForestClassifier(n_estimators=1000, max_depth=None)
     rf_classifier.fit(X_train_balanced, y_train_balanced)
     print("Training completed.")
 
