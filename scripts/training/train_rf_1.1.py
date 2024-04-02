@@ -1,91 +1,72 @@
 import argparse
-import numpy as np
 import pandas as pd
-from sklearn.model_selection import train_test_split, GridSearchCV  # Ensure GridSearchCV is imported here
+from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler
-from sklearn.ensemble import RandomForestClassifier, GradientBoostingClassifier
+from sklearn.ensemble import RandomForestClassifier
 from sklearn.metrics import classification_report, accuracy_score
 from imblearn.over_sampling import SMOTE
-from imblearn.pipeline import Pipeline
-from tqdm.notebook import tqdm  # Make sure tqdm is imported for the progress bar
+import numpy as np
 
-
-def add_features(df):
-    for window in [5, 10, 20]:
+# Function to calculate moving averages
+def add_moving_averages(df, window_sizes=[5, 10, 20]):
+    print("Adding moving averages...")
+    for window in window_sizes:
         df[f'MA_{window}'] = df['Close'].rolling(window=window).mean()
-    df['Volume_MA10'] = df['Volume'].rolling(window=10).mean()  # Example of another feature
     df.dropna(inplace=True)
+    print("Moving averages added.")
     return df
 
-
+# Load and preprocess the data
+# Load and preprocess the data
 def preprocess_data(input_file):
+    print("Loading and preprocessing data...")
     df = pd.read_csv(input_file)
-    df['Date'] = pd.to_datetime(df['Date'], utc=True)
+    
+    # Set the datetime index
+    df['Date'] = pd.to_datetime(df['Date'])
     df.set_index('Date', inplace=True)
     
-    df = add_features(df)
     X = df.drop(['Close', 'Label'], axis=1).select_dtypes(include=[np.number])
     y = df['Label']
 
     X.fillna(X.mean(), inplace=True)
+
     scaler = StandardScaler()
     X_scaled = scaler.fit_transform(X)
+    print("Data preprocessing completed.")
     return X_scaled, y
 
 
-class TqdmGridSearchCV(GridSearchCV):
-    def __init__(self, estimator, param_grid, scoring=None, n_jobs=None, 
-                 refit=True, cv=None, verbose=0, pre_dispatch='2*n_jobs', 
-                 error_score=np.nan, return_train_score=True):
-        super().__init__(estimator=estimator, param_grid=param_grid, scoring=scoring, 
-                         n_jobs=n_jobs, refit=refit, cv=cv, verbose=verbose, 
-                         pre_dispatch=pre_dispatch, error_score=error_score, 
-                         return_train_score=return_train_score)
 
-    def _run_search(self, evaluate_candidates):
-        candidates = list(self._get_param_iterator())
-        n_candidates = len(candidates)
-
-        with tqdm(total=n_candidates, desc="GridSearch Progress") as pbar:
-            def evaluate_candidates_with_progress_bar(candidate_params):
-                out = evaluate_candidates(candidate_params)
-                pbar.update(len(candidate_params))
-                return out
-
-            super()._run_search(evaluate_candidates_with_progress_bar)
-
-# Main function update to use TqdmGridSearchCV
+# Main function
 def main(input_file, test_size):
     X_scaled, y = preprocess_data(input_file)
+
+    print("Splitting data into train and test sets...")
     X_train, X_test, y_train, y_test = train_test_split(X_scaled, y, test_size=test_size, shuffle=False)
+    print("Data split completed.")
 
-    pipeline = Pipeline([
-        ('smote', SMOTE()),
-        ('classifier', RandomForestClassifier())
-    ])
+    print("Addressing class imbalance with SMOTE...")
+    smote = SMOTE()
+    X_train_balanced, y_train_balanced = smote.fit_resample(X_train, y_train)
+    print("SMOTE applied to training data.")
 
-    param_grid = {
-        'classifier': [RandomForestClassifier(), GradientBoostingClassifier()],
-        'classifier__n_estimators': [100, 300],
-        'classifier__max_depth': [10, 20]
-    }
+    print("Training Random Forest Classifier...")
+    rf_classifier = RandomForestClassifier(n_estimators=1000, max_depth=None)
+    rf_classifier.fit(X_train_balanced, y_train_balanced)
+    print("Training completed.")
 
-    # Use verbose for progress update, without custom tqdm integration
-    grid_search = GridSearchCV(pipeline, param_grid, cv=3, scoring='accuracy', n_jobs=-1, verbose=3)
-    grid_search.fit(X_train, y_train)
-
-    best_model = grid_search.best_estimator_
-    print(f"Best model: {best_model}")
-
-    y_test_pred = best_model.predict(X_test)
+    print("Evaluating model on the test set...")
+    y_test_pred = rf_classifier.predict(X_test)
     print("Test Set Performance:")
     print(classification_report(y_test, y_test_pred))
     print("Accuracy:", accuracy_score(y_test, y_test_pred))
+    print("Evaluation completed.")
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Train and evaluate a stock classifier with advanced techniques.")
+    parser = argparse.ArgumentParser(description="Train and evaluate a stock classifier with enhanced preprocessing.")
     parser.add_argument('--input_file', type=str, required=True, help='Path to the input CSV file containing technical data')
-    parser.add_argument('--test_size', type=float, default=0.2, help='Fraction of the data to be used as the test set')
+    parser.add_argument('--test_size', type=float, default=0.2, help='Fraction of data to be used as the test set')
 
     args = parser.parse_args()
     main(args.input_file, args.test_size)

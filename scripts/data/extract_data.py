@@ -18,48 +18,35 @@ def fetch_data(ticker, start_date, end_date):
     # Fetch historical (technical) data
     technical_data = stock.history(start=start_date, end=end_date)
     technical_data.reset_index(inplace=True)  # Make 'Date' a column
+    technical_data['Ticker'] = ticker  # Add 'Ticker' column to technical data
 
-    # Initialize a list to collect fundamental data for all years
-    fundamental_data_list = []
+    # Fetch the most recent fundamental data
+    info = stock.info
 
-    # Iterate over each year in the specified range
-    for year in range(int(start_date[:4]), int(end_date[:4]) + 1):
-        # Fetch fundamental data
-        info = stock.info
+    fundamental_data = {
+        'EPS': info.get('trailingEps', float('nan')),
+        'PE Ratio': info.get('trailingPE', float('nan')),
+        'ROE': info.get('returnOnEquity', float('nan')),
+        'Debt to Equity': info.get('debtToEquity', float('nan')),
+        'Current Ratio': info.get('currentRatio', float('nan')),
+        'EBITDA': info.get('ebitda', float('nan')),
+        'Dividend Yield': info.get('dividendYield', float('nan')) * 100 if info.get('dividendYield') else float('nan')
+    }
 
-        fundamental_data = {
-            'Year': year,
-            'Ticker': ticker,
-            'EPS': info.get('trailingEps', float('nan')),
-            'PE Ratio': info.get('trailingPE', float('nan')),
-            'ROE': info.get('returnOnEquity', float('nan')),
-            'Debt to Equity': info.get('debtToEquity', float('nan')),
-            'Current Ratio': info.get('currentRatio', float('nan')),
-            'EBITDA': info.get('ebitda', float('nan')),
-            'Dividend Yield': info.get('dividendYield', float('nan')) * 100 if info.get('dividendYield') else float('nan')
-        }
+    # Repeat the fundamental data for each date in the technical data
+    fundamental_data_daily = pd.DataFrame([fundamental_data] * len(technical_data), columns=fundamental_data.keys())
+    fundamental_data_daily['Date'] = technical_data['Date']  # Align the dates with the technical data
+    fundamental_data_daily['Ticker'] = ticker  # Ensure 'Ticker' column is added
 
-        # Append the dictionary to the list
-        fundamental_data_list.append(fundamental_data)
+    return technical_data, fundamental_data_daily
 
-    # Convert the list of dictionaries to a DataFrame
-    fundamental_data_all_years = pd.DataFrame(fundamental_data_list)
-
-    return technical_data, fundamental_data_all_years
-
-def save_data(dataframe, save_path, filename):
-    if not os.path.exists(save_path):
-        os.makedirs(save_path)
-    file_path = os.path.join(save_path, filename)
-    dataframe.to_csv(file_path, index=False)
-    print(f"Data saved to {file_path}")
 
 def main():
-    parser = argparse.ArgumentParser(description="Download stock technical and fundamental data for a given index.")
+    parser = argparse.ArgumentParser(description="Download stock technical and fundamental data for a given index and merge them into one file.")
     parser.add_argument('--index', type=str, default='DowJones30', help='Index name (default: DowJones30)')
     parser.add_argument('--start_year', type=int, default=2020, help='Start year (default: 2020)')
     parser.add_argument('--end_year', type=int, default=datetime.now().year, help='End year (default: current year)')
-    parser.add_argument('--save_path', type=str, default='./data', help='Path to save the CSV files (default: ./data)')
+    parser.add_argument('--save_path', type=str, default='./data', help='Path to save the CSV file (default: ./data)')
     args = parser.parse_args()
 
     if args.index != 'DowJones30':
@@ -69,16 +56,23 @@ def main():
     start_date = f"{args.start_year}-01-01"
     end_date = f"{args.end_year}-12-31"
 
-    technical_all = pd.DataFrame()
-    fundamental_all = pd.DataFrame()
+    combined_all = pd.DataFrame()
 
-    for ticker in tqdm(dow_jones_30_tickers, desc="Fetching data"):
+    for ticker in tqdm(dow_jones_30_tickers, desc="Fetching and combining data"):
         technical_data, fundamental_data = fetch_data(ticker, start_date, end_date)
-        technical_all = pd.concat([technical_all, technical_data])
-        fundamental_all = pd.concat([fundamental_all, fundamental_data], ignore_index=True)
 
-    save_data(technical_all, args.save_path, 'technical_data.csv')
-    save_data(fundamental_all, args.save_path, 'fundamental_data.csv')
+        # Merge technical and fundamental data on the 'Date' and 'Ticker' columns
+        combined_data = pd.merge(technical_data, fundamental_data, on=['Date', 'Ticker'])
+
+        combined_all = pd.concat([combined_all, combined_data], ignore_index=True)
+
+    # Save the combined data to a single CSV file
+    save_path = os.path.join(args.save_path, 'combined_data.csv')
+    combined_all.to_csv(save_path, index=False)
+    print(f"Combined data saved to {save_path}")
+
+if __name__ == "__main__":
+    main()
 
 if __name__ == "__main__":
     main()
